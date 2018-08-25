@@ -416,7 +416,6 @@ var
   strVal: string;
   brOpen,
   brClose: string;
-  brSkip: integer;
   brStack: string;
   aChar: string;
   bSlashed: boolean;
@@ -492,8 +491,7 @@ begin
       isQuote := false;
       brOpen := '{';   // мы начались с этой скобки
       brClose := '}';  // и закончимс€ этой
-      brSkip := 0;     // сколько раз нам попадалась открывающа€ скобка
-      brStack := '}';
+      //brStack := '}';
     end;
     '[': begin
       // мы - массив
@@ -502,15 +500,13 @@ begin
       isQuote := false;
       brOpen := '[';
       brClose := ']';
-      brSkip := 0;
-      brStack := ']';
+      //brStack := ']';
     end;
     else begin
       // мы пара ключ-значение
       setType(dtValue);
       isKey := true;
       isQuote := (aCode[1] = '"');
-      brSkip := 0;
       brStack := '';
     end;
   end;
@@ -532,9 +528,7 @@ begin
     case aCode[n] of
       // управл€ющие символы
       '"': begin
-        {if aCode[n - 1] <> '\'
-          then }isQuote := not isQuote{
-          else aChar := '"'};
+        isQuote := not isQuote
       end;
 
       '\': begin
@@ -543,7 +537,7 @@ begin
 
       ':': begin
         // если скип больше нул€, значит мы наткнулись на открывающую скобку и шлЄм у ху€м все управл€ющие символы
-        if Length(brStack) > 1 then begin
+        if Length(brStack) > 0 then begin
           aChar := ':';
         end else begin
           // если не в кавычках, значит, дочитали ключ
@@ -555,7 +549,7 @@ begin
 
       ',': begin
         // если скип больше нул€, значит мы наткнулись на открывающую скобку и шлЄм у ху€м все управл€ющие символы
-        if Length(brStack) > 1 then begin
+        if Length(brStack) > 0 then begin
           aChar := ',';
         end else begin
           // если не в кавычках, значит, дочитали ключ
