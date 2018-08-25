@@ -491,7 +491,7 @@ begin
       isQuote := false;
       brOpen := '{';   // мы начались с этой скобки
       brClose := '}';  // и закончимс€ этой
-      //brStack := '}';
+      brStack := '}';
     end;
     '[': begin
       // мы - массив
@@ -500,7 +500,7 @@ begin
       isQuote := false;
       brOpen := '[';
       brClose := ']';
-      //brStack := ']';
+      brStack := ']';
     end;
     else begin
       // мы пара ключ-значение
@@ -537,7 +537,7 @@ begin
 
       ':': begin
         // если скип больше нул€, значит мы наткнулись на открывающую скобку и шлЄм у ху€м все управл€ющие символы
-        if Length(brStack) > 0 then begin
+        if Length(brStack) > 1 then begin
           aChar := ':';
         end else begin
           // если не в кавычках, значит, дочитали ключ
@@ -549,7 +549,7 @@ begin
 
       ',': begin
         // если скип больше нул€, значит мы наткнулись на открывающую скобку и шлЄм у ху€м все управл€ющие символы
-        if Length(brStack) > 0 then begin
+        if Length(brStack) > 1 then begin
           aChar := ',';
         end else begin
           // если не в кавычках, значит, дочитали ключ
