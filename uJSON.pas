@@ -7,60 +7,76 @@ uses
 
 type
   myJDType = (dtValue, dtObject, dtArray, dtUnset);
+  myJVType = (vtText, vtNumber, vtBoolean);
 
   myJSONItem = class
   private
-    // имя элемента
+    // item name
     fKey: string;
-    // тип хранимых данных (значение/объект/массив)
+    // item type (value/object/array)
     fType: myJDType;
-    // значение (для типа dtValue)
+    // if item type is value, additionaly specify value type (text/number/boolean)
+    fValType: myJVType;
+    // value (if item type is value)
     fValue: string;
-    // дочерние элементы (для объекта/массива)
+    // child nodes (if item type is object/array)
     fChild: array of myJSONItem;
 
-    // методы
+    // getters
     function getItem(key: string): myJSONItem;
     function getCode: string;
     function getKey(index: integer): string;
     function getElem(index: integer): myJSONItem;  
     function hasKey(key: string): boolean;
 
-    // парсинг идёт черрез свойство Code? так что можно будет код одного объекта присвоить дрругому и заебок
+    // parse code
     procedure setCode(aCode: string);
 
-    // утилиты
+    // utility
     procedure clear_child;
+
+    // this metod do actual parsing, returns the rest (unparsed) of the code
+    function parse(aCode: string): string;
+    // those methods read values and return the rest of the code
+    function readValue(aCode: string): string;
+    function readObject(aCode: string): string;
+    function readArray(aCode: string): string;
+    function readNumber(aCode: string): string;
+    function readBoolean(acode: string): string;
   public
-    // для получения имени самого элемента (нужно)
+    // Item's name (key)
     property Name: string read fKey;
-    // для получения дочернего элемента по имени (ключу)
+    // Returns child node by it's key
     property Item[key: string]: myJSONItem read getItem; default;
-    // для получения кода текущего элемента
+    // Own code setter/getter (assign opne item's code to another to clone it)
     property Code: string read getCode write setCode;
-    // для получения ключей дочерних элементов
+    // Returns child node key by it's index
     property Key[index: integer]: string read getKey;
-    // для получения дочернего элемента по индексу (для массивов, например, но сработает и для объектов)
+    // Returns child node by it's index (for arrays, but will also work for objects)
     property Value[index: integer]: myJSONItem read getElem;
-    // проверяет наличие ключа более элегантным, чем сверка со значением по умолчанию, способом
+    // Returns if the node has some key (better than get value and check if it's equal to default)
     property Has[key: string]: boolean read hasKey;
 
     constructor Create;
     destructor Destroy; override;
 
-    //
+    // Child nodes count
     function Count: integer;
+    // Remove n-th node
     procedure Remove(n: integer);
+    // Load/Save own code
     procedure LoadFromFile(filename: string);
     procedure SaveToFile(filename: string);
 
-    // методы конечных узлов (листьев)
+    // terminal node's (leafs) methods
+    //  setters
     procedure setInt(value: integer);
     procedure setNum(value: double);
     procedure setStr(value: string);
     procedure setBool(value: boolean);
     procedure setType(aType: myJDType);
 
+    //   getters
     function getInt(default: integer = 0): integer;
     function getNum(default: double = 0): double;
     function getStr(default: string = ''): string;
@@ -70,13 +86,36 @@ type
 
 implementation
 
+const
+  WHITESPACE: set of char =  [#9, #10, #13, #32];
+  DIGITS: set of char =  ['0'..'9'];
+  SIGNS: set of char = ['+', '-'];
+
+
+// removes all the whitespaces from the begining of the line
+function wsTrim(src: string): string;
+var
+  n, l: integer;
+begin
+  n := 1;
+  l := Length(src);
+
+  while (src[n] in WHITESPACE) do begin
+    n := n + 1;
+    if n >= l
+      then Break;
+  end;
+
+  result := Copy(src, n, l - n + 1);
+end;
+
 { myJSONItem }
 
 procedure myJSONItem.clear_child;
 var
   i: integer;
 begin
-  // удаляет всех потомков (рекурсивно)
+  // recursively removes all childs
   for i := 0 to high(fChild) do
     fChild[i].Free;
   SetLength(fChild, 0);
@@ -89,14 +128,14 @@ end;
 
 constructor myJSONItem.Create;
 begin
-  // здесь бы задать значения по умолчанию, но я пока не уверрен:
-  // коррневому элементу они не сильно-то и нужны, а дочеррним будут заданы
-  // при обращении
+  // Should've set initial values
+  // But root node don't need them and child node will get them on parsing/from setter
+  // or when they are called for the first time
 end;
 
 destructor myJSONItem.Destroy;
 begin
-  // чтобы не оставлять "висяков" в памяти
+  // mem leaks prevention
   clear_child;
 
   inherited;
@@ -106,31 +145,31 @@ function myJSONItem.getBool(default: boolean): boolean;
 var
   f: double;
 begin
-  // значение по умолчанию
+  // defaulting
   result := default;
 
   if self = nil
     then Exit;
 
-  // проверяем на соответствие типу
+  // type checking
   if fType <> dtValue
     then Exit;
 
-  // проверяем литеральные значения
+  // checking alphabetic values
   if fValue = ''
-    then Exit; // не значения - будет по умолчанию
+    then Exit; // unset - defaulting
 
-  if fValue = 'true' then begin
+  if LowerCase(fValue) = 'true' then begin
     result := true;
     Exit;
   end;
 
-  if fValue = 'false' then begin
+  if LowerCase(fValue) = 'false' then begin
     result := false;
     Exit;
   end;
 
-  // прроверяем числовые значения
+  // checking numeral values
   if default
     then f := 1
     else f := 0;
@@ -151,7 +190,7 @@ begin
   case self.fType of
     dtObject: begin
       result := '{';
-      // перечисляем всё, что у нас внутри
+      // adding childrens code
       for i := 0 to high(fChild) do begin
         result := result + fChild[i].Code;
         if i < high(fChild)
@@ -161,7 +200,7 @@ begin
     end;  
     dtArray: begin
       result := '[';
-      // перечисляем всё, что у нас внутри
+      // children's code
       for i := 0 to high(fChild) do begin
         result := result + fChild[i].Code;
         if i < high(fChild)
@@ -170,15 +209,14 @@ begin
       result := result + ']';
     end;
     dtValue: begin
-      // по идее числа не должны быть в кавычках, но мне похуй, ведь я храню всё в строках
-      // но эт точка роста: можно хрранить в нативном виде и запоминать, в каком виде они устанавливались
-      // что нихуя не сработает при парсинге =/
-      result := '"' + fValue + '"';
+      // only text values should be enquoted
+      if fValType <> vtText
+        then result := fValue
+        else result := '"' + fValue + '"';
     end;
   end;
 
-  // если мы не корневой элемент и не элемент массива, то у нас есть ключ
-  // пишем его перед значением
+  // if we have a key - add it before our value
   if fKey <> ''
     then result := '"' + fKey + '":' + result;
 end;
@@ -187,29 +225,29 @@ function myJSONItem.getElem(index: integer): myJSONItem;
 var
   i: integer;
 begin
-  // в отличие от getItem мы не меняем тип переменной
+  // Item type is not changed, unlike getItem
   result := nil;
-  // проверка на соответствие типу
+  // РїСЂРѕРІРµСЂРєР° РЅР° СЃРѕРѕС‚РІРµС‚СЃС‚РІРёРµ С‚РёРїСѓ
   if (fType <> dtObject) and (fType <> dtArray)
     then Exit;
   // range check
   if index < 0
     then Exit;
 
-  // здесь небольшая вилка
+  // Р·РґРµСЃСЊ РЅРµР±РѕР»СЊС€Р°СЏ РІРёР»РєР°
   if fType = dtObject then begin
-    // объект не может вернуть элемент с индексом выше максимального
+    // РѕР±СЉРµРєС‚ РЅРµ РјРѕР¶РµС‚ РІРµСЂРЅСѓС‚СЊ СЌР»РµРјРµРЅС‚ СЃ РёРЅРґРµРєСЃРѕРј РІС‹С€Рµ РјР°РєСЃРёРјР°Р»СЊРЅРѕРіРѕ
     if index <= high(fChild)
       then result := fChild[index];
     Exit;
   end;
 
-  // а массив вполне себе может, при этом он заполнит все недостающие элементы пустыми значениями
+  // Р° РјР°СЃСЃРёРІ РІРїРѕР»РЅРµ СЃРµР±Рµ РјРѕР¶РµС‚, РїСЂРё СЌС‚РѕРј РѕРЅ Р·Р°РїРѕР»РЅРёС‚ РІСЃРµ РЅРµРґРѕСЃС‚Р°СЋС‰РёРµ СЌР»РµРјРµРЅС‚С‹ РїСѓСЃС‚С‹РјРё Р·РЅР°С‡РµРЅРёСЏРјРё
   if fType = dtArray then begin
-    // проверяем длину
+    // РїСЂРѕРІРµСЂСЏРµРј РґР»РёРЅСѓ
     if high(fChild) < index
       then SetLength(fChild, index + 1);
-    // добавляем элементы, начиная с конца (в начале они могут уже быть, а если нет, то не похуй ли)
+    // РґРѕР±Р°РІР»СЏРµРј СЌР»РµРјРµРЅС‚С‹, РЅР°С‡РёРЅР°СЏ СЃ РєРѕРЅС†Р° (РІ РЅР°С‡Р°Р»Рµ РѕРЅРё РјРѕРіСѓС‚ СѓР¶Рµ Р±С‹С‚СЊ, Р° РµСЃР»Рё РЅРµС‚, С‚Рѕ РЅРµ РїРѕС…СѓР№ Р»Рё)
     for i := high(fChild) downto 0 do
       if fChild[i] = nil
         then fChild[i] := myJSONItem.Create
@@ -222,17 +260,17 @@ function myJSONItem.getInt(default: integer): integer;
 var
   f: double;
 begin
-  // возвращает значение как целое число
+  // РІРѕР·РІСЂР°С‰Р°РµС‚ Р·РЅР°С‡РµРЅРёРµ РєР°Рє С†РµР»РѕРµ С‡РёСЃР»Рѕ
   result := default;   
 
   if self = nil
     then Exit;
 
-  // проверяем на соотвествие типу
+  // РїСЂРѕРІРµСЂСЏРµРј РЅР° СЃРѕРѕС‚РІРµСЃС‚РІРёРµ С‚РёРїСѓ
   if fType <> dtValue
     then Exit;
 
-  // проверяем, а не boolean ли у нас в значении
+  // РїСЂРѕРІРµСЂСЏРµРј, Р° РЅРµ boolean Р»Рё Сѓ РЅР°СЃ РІ Р·РЅР°С‡РµРЅРёРё
   if fValue = 'true' then begin
     result := 1;
     Exit;
@@ -242,10 +280,10 @@ begin
     Exit;
   end;
 
-  // преобразуем как дробное (функция и целое схавает)
+  // РїСЂРµРѕР±СЂР°Р·СѓРµРј РєР°Рє РґСЂРѕР±РЅРѕРµ (С„СѓРЅРєС†РёСЏ Рё С†РµР»РѕРµ СЃС…Р°РІР°РµС‚)
   f := StrToFloatDef(fValue, default);
   
-  // и выделяем целую часть
+  // Рё РІС‹РґРµР»СЏРµРј С†РµР»СѓСЋ С‡Р°СЃС‚СЊ
   result := Trunc(f);
 end;
 
@@ -256,14 +294,14 @@ begin
   result := nil;
   if self = nil
     then Exit;
-  // возвращает дочерний элемент
-  // если элемент отсутствует - создаёт его
+  // РІРѕР·РІСЂР°С‰Р°РµС‚ РґРѕС‡РµСЂРЅРёР№ СЌР»РµРјРµРЅС‚
+  // РµСЃР»Рё СЌР»РµРјРµРЅС‚ РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚ - СЃРѕР·РґР°С‘С‚ РµРіРѕ
 
-  // при этом тип элемента меняется на dtObject
+  // РїСЂРё СЌС‚РѕРј С‚РёРї СЌР»РµРјРµРЅС‚Р° РјРµРЅСЏРµС‚СЃСЏ РЅР° dtObject
   if fType <> dtObject
     then setType(dtObject);
 
-  // ищем элемент
+  // РёС‰РµРј СЌР»РµРјРµРЅС‚
   key := LowerCase(key);
   n := -1;
   for i := 0 to high(fChild) do
@@ -272,7 +310,7 @@ begin
       Break;
     end;
 
-  // если не нашёлся - создаём
+  // РµСЃР»Рё РЅРµ РЅР°С€С‘Р»СЃСЏ - СЃРѕР·РґР°С‘Рј
   if n < 0 then begin
     SetLength(fChild, Length(fChild) + 1);
     n := high(fChild);
@@ -280,7 +318,7 @@ begin
     fChild[n].fKey := key;
   end;
 
-  // возврращаем результат
+  // РІРѕР·РІСЂСЂР°С‰Р°РµРј СЂРµР·СѓР»СЊС‚Р°С‚
   result := fChild[n];
 end;
 
@@ -288,8 +326,8 @@ function myJSONItem.getKey(index: integer): string;
 var
   n: myJSONItem;
 begin
-  // возврращаем ключ N-го потомка
-  // работает по прринципу getElem и с его помощью
+  // РІРѕР·РІСЂСЂР°С‰Р°РµРј РєР»СЋС‡ N-РіРѕ РїРѕС‚РѕРјРєР°
+  // СЂР°Р±РѕС‚Р°РµС‚ РїРѕ РїСЂСЂРёРЅС†РёРїСѓ getElem Рё СЃ РµРіРѕ РїРѕРјРѕС‰СЊСЋ
   result := '';
   n := getElem(index);
   if n <> nil
@@ -298,17 +336,17 @@ end;
 
 function myJSONItem.getNum(default: double): double;
 begin
-  // возвращает значение как дробное число
+  // РІРѕР·РІСЂР°С‰Р°РµС‚ Р·РЅР°С‡РµРЅРёРµ РєР°Рє РґСЂРѕР±РЅРѕРµ С‡РёСЃР»Рѕ
   result := default;  
 
   if self = nil
     then Exit;
 
-  // проверяем на соотвествие типу
+  // РїСЂРѕРІРµСЂСЏРµРј РЅР° СЃРѕРѕС‚РІРµСЃС‚РІРёРµ С‚РёРїСѓ
   if fType <> dtValue
     then Exit;
 
-  // проверяем, а не boolean ли у нас в значении
+  // РїСЂРѕРІРµСЂСЏРµРј, Р° РЅРµ boolean Р»Рё Сѓ РЅР°СЃ РІ Р·РЅР°С‡РµРЅРёРё
   if fValue = 'true' then begin
     result := 1;
     Exit;
@@ -318,19 +356,19 @@ begin
     Exit;
   end;
   
-  // преобразуем значение
+  // РїСЂРµРѕР±СЂР°Р·СѓРµРј Р·РЅР°С‡РµРЅРёРµ
   result := StrToFloatDef(fValue, default);
 end;
 
 function myJSONItem.getStr(default: string): string;
 begin
-  // тут нам насррать что как - всё равно всё хранится в строке
+  // С‚СѓС‚ РЅР°Рј РЅР°СЃСЂСЂР°С‚СЊ С‡С‚Рѕ РєР°Рє - РІСЃС‘ СЂР°РІРЅРѕ РІСЃС‘ С…СЂР°РЅРёС‚СЃСЏ РІ СЃС‚СЂРѕРєРµ
   result := default;   
 
   if self = nil
     then Exit;
 
-  // проверяем только на соотвествие типу
+  // РїСЂРѕРІРµСЂСЏРµРј С‚РѕР»СЊРєРѕ РЅР° СЃРѕРѕС‚РІРµСЃС‚РІРёРµ С‚РёРїСѓ
   if fType <> dtValue
     then Exit;
   result := fValue;
@@ -350,6 +388,7 @@ function myJSONItem.hasKey(key: string): boolean;
 var
   i: integer;
 begin
+  key := LowerCase(key);
   result := true;
   for i := 0 to high(fChild) do
     if fChild[i].fKey = key
@@ -367,17 +406,183 @@ begin
   Reset(f);
   while not EOF(f) do begin
     Readln(f, b);
+    b := Trim(b);
     s := s + b;
   end;
   Code := s;
   CloseFile(f);
 end;
 
+function myJSONItem.parse(aCode: string): string;
+var
+  trail: char;
+begin
+  // 1. С‡РёСЃС‚РёРј WS
+  aCode := wsTrim(aCode);
+  // С‚РµРїРµСЂСЊ РІ РїРµСЂРІРѕРј СЃРёРјРІРѕР»Рµ РЅР°С€Р° РѕС‚РєСЂС‹РІР°СЋС‰Р°СЏ СЃРєРѕР±РєР°
+  case aCode[1] of
+    // РјС‹ - Value
+    '"': result := readValue(aCode);
+    // С‡РёСЃР»Рѕ
+    '0'..'9', '+', '-': result := readNumber(aCode);
+    // РЅСѓР¶РЅРѕ РґРѕР±Р°РІРёС‚СЊ РїРѕРґРґРµСЂР¶РєСѓ Р±СѓР»РµРІС‹С… Р·РЅР°С‡РµРЅРёР№
+    // РјС‹ - Object
+    '{': result := readObject(aCode);
+    // РјС‹ - Array
+    '[': result := readArray(aCode);
+    // РҐСѓР№РЅСЏ РєР°РєР°СЏ-С‚Рѕ
+    else begin
+      // Р·РґРµСЃСЊ РїРѕ С…РѕСЂРѕС€РµРјСѓ РІС‹РєРёРЅСѓС‚СЊ РѕС€РёР±РєСѓ
+      result := aCode;
+    end;
+  end;
+end;
+
+function myJSONItem.readArray(aCode: string): string;
+var
+  n, idx: integer;
+  val: myJSONItem;
+begin
+  // we get here because first symbol was '['
+  Delete(aCode, 1, 1);
+  aCode := wsTrim(aCode);
+  idx := 0;
+
+  Self.setType(dtArray);
+  // reading values until we reach a ']'
+  while aCode[1] <> ']' do begin
+    // Creating a new value
+    val := Self.Value[idx];
+    aCode := val.parse(aCode); // "foo"\n,  ,  "bar"] -> \n,  ,  "bar"]
+    aCode := wsTrim(aCode); // \n,  ,  "bar'] -> ,  ,  "bar"]
+    while aCode[1] = ',' do begin
+      aCode := wsTrim(
+        Copy(
+          aCode,
+          2,
+          Length(aCode)
+        )
+      ); // ,  ,  "bar"] -> ,  "bar"] -> "bar"]
+      idx := idx + 1;
+    end;
+  end;
+
+  result := Copy(aCode, 2, Length(aCode)); // ]... -> ...
+end;
+
+function myJSONItem.readBoolean(acode: string): string;
+begin
+
+end;
+
+function myJSONItem.readNumber(aCode: string): string;
+var
+  n, l: integer;
+begin
+  // РЅСѓР¶РЅРѕ РґРѕР±Р°РІРёС‚СЊ РїРѕРґРґРµСЂР¶РєСѓ С‡РёСЃРµР» РІРёРґР° -1.23E4.5
+
+  l := Length(aCode);
+  n := 1;
+  // 1. sign (optional)
+  if aCode[n] in SIGNS
+    then n := n + 1;
+
+  // 2. some digits
+  while (aCode[n] in DIGITS) do
+    n := n + 1;
+
+  // 3. decimal dot (optional)
+  if aCode[n] = '.'
+    then n := n + 1;
+
+  // 4. fractional digits (optional)
+  while (aCode[n] in DIGITS) do
+    n := n + 1;
+
+  // TODO: Add E+/-1.23 part
+
+  // result
+  Self.setType(dtValue);
+  Self.fValType := vtNumber;
+  Self.fValue := Copy(aCode, 1, n - 1);
+
+  result := Copy(aCode, n, l);
+end;
+
+function myJSONItem.readObject(aCode: string): string;
+var
+  n: integer;
+  val: myJSONItem;
+begin
+  // just like an array, but we read pairs of key:value instead
+  Delete(aCode, 1, 1);
+  aCode := wsTrim(aCode);
+
+  Self.setType(dtObject);
+
+  // reading values until we reach a '}'
+  while aCode[1] <> '}' do begin
+    // Reading a key
+    n := 1;
+    while aCode[n] <> ':' do
+      n := n + 1;
+
+    // Creating a new value
+    // keys are supposted to be quoted
+    val := Self[Copy(aCode, 2, n - 3)]; // -quote -quote -colon
+    aCode := Copy(aCode, n + 1, Length(aCode));
+
+    // parsing value
+    aCode := val.parse(aCode);
+    // trimming leftovers
+    aCode := wsTrim(aCode);
+
+    // skipping to the next pair
+    while aCode[1] = ',' do begin
+      aCode := wsTrim(
+        Copy(
+          aCode,
+          2,
+          Length(aCode)
+        )
+      ); // ,  ,  "bar"] -> ,  "bar"] -> "bar"]
+    end;
+  end;
+
+  result := Copy(aCode, 2, Length(aCode)); // ]... -> ...
+end;
+
+function myJSONItem.readValue(aCode: string): string;
+var
+  n: integer;
+begin
+  // we get here because our first symbol is '"'
+  n := 2;
+
+  while aCode[n] <> '"' do begin
+    case aCode[n] of
+      '\': begin
+        // TODO: escapes and stuff
+        n := n + 2;
+      end;
+
+      else
+        n := n + 1;
+    end;
+  end;
+
+  Self.setType(dtValue);
+  Self.fValType := vtText;
+  Self.fValue := Copy(aCode, 2, n - 2);
+
+  result := Copy(aCode, n + 1, Length(aCode));
+end;
+
 procedure myJSONItem.Remove(n: integer);
 var
   i: integer;
 begin
-  // удаляет N-ого потомка
+  // СѓРґР°Р»СЏРµС‚ N-РѕРіРѕ РїРѕС‚РѕРјРєР°
   if (n < 0) or (n > high(fChild)) or (length(fChild) < 1)
     then Exit;
 
@@ -400,219 +605,20 @@ end;
 
 procedure myJSONItem.setBool(value: boolean);
 begin
-  // значения могут иметь только dtValue, массивы и объекты будут редуцированы
+  if self = nil
+    then Exit;
+
+  // Р·РЅР°С‡РµРЅРёСЏ РјРѕРіСѓС‚ РёРјРµС‚СЊ С‚РѕР»СЊРєРѕ dtValue, РјР°СЃСЃРёРІС‹ Рё РѕР±СЉРµРєС‚С‹ Р±СѓРґСѓС‚ СЂРµРґСѓС†РёСЂРѕРІР°РЅС‹
   setType(dtValue);
+  //fValType := vtBoolean;
   if value
     then fValue := 'true'
     else fValue := 'false';
 end;
 
 procedure myJSONItem.setCode(aCode: string);
-var
-  n: integer;
-  isKey: boolean;   // are we reading key (otherwise - value)
-  isQuote: boolean; // are we inside quotes and should treat special characters just like regular ones
-  strKey,
-  strVal: string;
-  brOpen,
-  brClose: string;
-  brStack: string;
-  aChar: string;
-  bSlashed: boolean;
-
-  function clean(str: string; sym: char): string;
-  var
-    i: integer;
-  begin
-    if Pos(sym ,str) = 0 then begin
-      result := str;
-      Exit;
-    end;
-    result := '';
-    for i := 1 to Length(str) do
-      if str[i] <> sym
-        then result := result + str[i];
-  end;
-
-  procedure put_value;
-  var
-    isCode: boolean;
-  begin
-    // мы прочитали значение и, возможно, ключ (в массивах их нет)
-    strKey := Trim(strKey);
-    strVal := trim(strVal);
-    // проверяем, является ли значение кодом, который можно распарсить
-    if Length(strVal) > 0 then begin
-      if (strVal[1] = '{') or (strVal[1] = '[')
-        then isCode := true
-        else isCode := false;
-    end else begin
-      isCode := false;
-    end;
-    // теперь нужно обрработать эту ситуацию в соответствии со своим типом
-    case fType of
-      dtObject: begin
-        if isCode
-          then self[strKey].Code := strVal
-          else self[strKey].setStr(strVal);
-        isKey := true;
-      end;
-      dtArray: begin
-        if isCode
-          then self.Value[self.Count].Code := strVal
-          else self.Value[self.Count].setStr(strVal);
-        isKey := false;
-      end;
-      dtValue: begin
-        fKey := strKey;
-        if isCode
-          then Code := strVal
-          else fValue := strVal;
-        isKey := true;
-      end;
-    end;
-    strKey := '';
-    strVal := '';
-  end;
-
 begin
-  aCode := Trim(aCode);
-  // additional cleaning
-  aCode := clean(aCode, #9);    // TAB
-  aCode := clean(aCode, #10);   // LF
-  aCode := clean(aCode, #13);   // CR
-
-  // сперва определяем свой тип
-  case aCode[1] of
-    '{': begin
-      // мы - объект
-      setType(dtObject);
-      isKey := true;
-      isQuote := false;
-      brOpen := '{';   // мы начались с этой скобки
-      brClose := '}';  // и закончимся этой
-      brStack := '}';
-    end;
-    '[': begin
-      // мы - массив
-      setType(dtArray);
-      isKey := false; // нет в массиве ключей, только значения
-      isQuote := false;
-      brOpen := '[';
-      brClose := ']';
-      brStack := ']';
-    end;
-    else begin
-      // мы пара ключ-значение
-      setType(dtValue);
-      isKey := true;
-      isQuote := (aCode[1] = '"');
-      brStack := '';
-    end;
-  end;
-
-  // не экранировано
-  bSlashed := false;
-
-  // читаем остаток строки
-  for n := 2 to Length(aCode) do begin
-    // проверяем очередной символ
-
-    // на случай экранирования
-    if bSlashed
-      then aChar := aCode[n]
-      else aChar := '';
-    bSlashed := false;
-
-    if aChar = '' then
-    case aCode[n] of
-      // управляющие символы
-      '"': begin
-        isQuote := not isQuote
-      end;
-
-      '\': begin
-        bSlashed := true;
-      end;
-
-      ':': begin
-        // если скип больше нуля, значит мы наткнулись на открывающую скобку и шлём у хуям все управляющие символы
-        if Length(brStack) > 1 then begin
-          aChar := ':';
-        end else begin
-          // если не в кавычках, значит, дочитали ключ
-          if not isQuote
-            then isKey := false
-            else aChar := ':';
-        end;
-      end;
-
-      ',': begin
-        // если скип больше нуля, значит мы наткнулись на открывающую скобку и шлём у хуям все управляющие символы
-        if Length(brStack) > 1 then begin
-          aChar := ',';
-        end else begin
-          // если не в кавычках, значит, дочитали ключ
-          if not isQuote
-            then put_value
-            else aChar := ',';
-        end;
-      end;
-
-      // открывающие скобки
-      '{': begin
-        // ещё одна открывающая, увеличиваем количество пропусков на один
-        if not isQuote then begin
-            brStack := '}' + brStack;
-            aChar := '{';
-        end else begin
-          aChar := '{';
-        end;
-      end;
-      '[': begin
-        if not isQuote then begin
-            brStack := ']' + brStack;
-            aChar := '[';
-        end else begin
-          aChar := '[';
-        end;
-      end;
-
-      // закрывающие скобки
-      '}': begin
-        // если это наша закрывающая, то завершаем цикл
-        if not isQuote then begin
-            if Copy(brStack, 1, 1) = '}'
-              then Delete(brStack, 1, 1);
-            aChar := '}';
-          if Length(brStack) < 1
-            then Break;
-        end else begin
-          aChar := '}';
-        end;
-      end;    
-      ']': begin
-        // если это наша закрывающая, то завершаем цикл
-        if not isQuote then begin
-            if Copy(brStack, 1, 1) = ']'
-              then Delete(brStack, 1, 1);
-            aChar := ']';
-          if Length(brStack) < 1
-            then Break;
-        end else begin
-          aChar := ']';
-        end;
-      end;
-
-      else aChar := aCode[n]
-    end;
-
-    // записываем символ к тому, что сейчас читаем
-    if isKey
-      then strKey := strKey + aChar
-      else strVal := strVal + aChar;
-  end;
-  put_value;
+  Self.parse(aCode); // =/
 end;
 
 procedure myJSONItem.setInt(value: integer);
@@ -620,8 +626,9 @@ begin
   if self = nil
     then Exit;
 
-  // значения могут иметь только dtValue, массивы и объекты будут редуцированы
+  // Р·РЅР°С‡РµРЅРёСЏ РјРѕРіСѓС‚ РёРјРµС‚СЊ С‚РѕР»СЊРєРѕ dtValue, РјР°СЃСЃРёРІС‹ Рё РѕР±СЉРµРєС‚С‹ Р±СѓРґСѓС‚ СЂРµРґСѓС†РёСЂРѕРІР°РЅС‹
   setType(dtValue);
+  fValType := vtNumber;
   fValue := IntToStr(value);
 end;
 
@@ -630,8 +637,9 @@ begin
   if self = nil
     then Exit;
 
-  // значения могут иметь только dtValue, массивы и объекты будут редуцированы
+  // Р·РЅР°С‡РµРЅРёСЏ РјРѕРіСѓС‚ РёРјРµС‚СЊ С‚РѕР»СЊРєРѕ dtValue, РјР°СЃСЃРёРІС‹ Рё РѕР±СЉРµРєС‚С‹ Р±СѓРґСѓС‚ СЂРµРґСѓС†РёСЂРѕРІР°РЅС‹
   setType(dtValue);
+  fValType := vtNumber;
   fValue := FloatToStr(value);
 end;
 
@@ -640,8 +648,9 @@ begin
   if self = nil
     then Exit;
 
-  // значения могут иметь только dtValue, массивы и объекты будут редуцированы
+  // Р·РЅР°С‡РµРЅРёСЏ РјРѕРіСѓС‚ РёРјРµС‚СЊ С‚РѕР»СЊРєРѕ dtValue, РјР°СЃСЃРёРІС‹ Рё РѕР±СЉРµРєС‚С‹ Р±СѓРґСѓС‚ СЂРµРґСѓС†РёСЂРѕРІР°РЅС‹
   setType(dtValue);
+  fValType := vtText;
   fValue := value;
 end;
 
@@ -652,23 +661,26 @@ begin
   if self = nil
     then Exit;
     
-  // если массив или объект преобразуются в число, то нужно изничтожить всех потомков
+  // РµСЃР»Рё РјР°СЃСЃРёРІ РёР»Рё РѕР±СЉРµРєС‚ РїСЂРµРѕР±СЂР°Р·СѓСЋС‚СЃСЏ РІ С‡РёСЃР»Рѕ, С‚Рѕ РЅСѓР¶РЅРѕ РёР·РЅРёС‡С‚РѕР¶РёС‚СЊ РІСЃРµС… РїРѕС‚РѕРјРєРѕРІ
   if (aType = dtValue) and (fType <> dtValue) then begin
     clear_child;
+    // РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ С‚РёРї Р·РЅР°С‡РµРЅРёСЏ - С‚РµРєСЃС‚
+    // gfhcth b ctnnths 'nj bcghfdkz.n? tckb ye;yj
+    fValType := vtText;
   end;
 
-  // если число преобразуется в объект или массив, то нужно отнять у него значение
+  // РµСЃР»Рё С‡РёСЃР»Рѕ РїСЂРµРѕР±СЂР°Р·СѓРµС‚СЃСЏ РІ РѕР±СЉРµРєС‚ РёР»Рё РјР°СЃСЃРёРІ, С‚Рѕ РЅСѓР¶РЅРѕ РѕС‚РЅСЏС‚СЊ Сѓ РЅРµРіРѕ Р·РЅР°С‡РµРЅРёРµ
   if (aType <> dtValue) and (fType = dtValue) then begin
     fValue := '';
   end;
 
-  // если массив преобразуется в объект, то нужно всем его элементам назначить ключи
+  // РµСЃР»Рё РјР°СЃСЃРёРІ РїСЂРµРѕР±СЂР°Р·СѓРµС‚СЃСЏ РІ РѕР±СЉРµРєС‚, С‚Рѕ РЅСѓР¶РЅРѕ РІСЃРµРј РµРіРѕ СЌР»РµРјРµРЅС‚Р°Рј РЅР°Р·РЅР°С‡РёС‚СЊ РєР»СЋС‡Рё
   if (aType = dtObject) and (fType = dtArray) then begin
     for i := 0 to high(fChild) do
       fChild[i].fKey := IntToStr(i);
   end;
 
-  // если объект преобрразуется в массив, то нужно поубиррать ключи у его потомков
+  // РµСЃР»Рё РѕР±СЉРµРєС‚ РїСЂРµРѕР±СЂСЂР°Р·СѓРµС‚СЃСЏ РІ РјР°СЃСЃРёРІ, С‚Рѕ РЅСѓР¶РЅРѕ РїРѕСѓР±РёСЂСЂР°С‚СЊ РєР»СЋС‡Рё Сѓ РµРіРѕ РїРѕС‚РѕРјРєРѕРІ
   if (aType = dtArray) and (fType = dtObject) then begin
     for i := 0 to high(fChild) do
       fChild[i].fKey := '';
