@@ -1,4 +1,4 @@
-unit uJSON;
+﻿unit uJSON;
 
 interface
 
@@ -7,7 +7,7 @@ uses
 
 type
   myJDType = (dtValue, dtObject, dtArray, dtUnset);
-  myJVType = (vtText, vtNumber, vtBoolean);
+  myJVType = (vtText, vtNumber, vtBoolean, vtNull);
 
   myJSONItem = class
   private
@@ -42,7 +42,8 @@ type
     function readObject(aCode: string): string;
     function readArray(aCode: string): string;
     function readNumber(aCode: string): string;
-    function readBoolean(acode: string): string;
+    function readBoolean(aCode: string): string;
+    function readNull(aCode: string): string;
   public
     // Item's name (key)
     property Name: string read fKey;
@@ -82,6 +83,10 @@ type
     function getStr(default: string = ''): string;
     function getBool(default: boolean = false): boolean;
     function getType(default: myJDType = dtUnset): myJDType;
+
+    // NULL-handling
+    procedure setNull;
+    function isNull: boolean;
   end;
 
 implementation
@@ -396,6 +401,17 @@ begin
   result := false;
 end;
 
+function myJSONItem.isNull: boolean;
+begin
+  // or should it be true?
+  result := false;
+
+  if Self = nil
+    then Exit;
+
+  result := fValType = vtNull;
+end;
+
 procedure myJSONItem.LoadFromFile(filename: string);
 var
   f: Text;
@@ -421,18 +437,21 @@ begin
   aCode := wsTrim(aCode);
   // теперь в первом символе наша открывающая скобка
   case aCode[1] of
-    // мы - Value
+    // generic value (text)
     '"': result := readValue(aCode);
-    // число
+    // number
     '0'..'9', '+', '-': result := readNumber(aCode);
-    // нужно добавить поддержку булевых значений
-    // мы - Object
+    // boolean
+    't', 'T', 'f', 'F': result := readBoolean(aCode);
+    // null
+    'n', 'N': result := readNull(aCode);
+    // Object
     '{': result := readObject(aCode);
-    // мы - Array
+    // Array
     '[': result := readArray(aCode);
-    // Хуйня какая-то
+    // Shit =/
     else begin
-      // здесь по хорошему выкинуть ошибку
+      // Shouldda raise an exception here
       result := aCode;
     end;
   end;
@@ -470,9 +489,42 @@ begin
   result := Copy(aCode, 2, Length(aCode)); // ]... -> ...
 end;
 
-function myJSONItem.readBoolean(acode: string): string;
+function myJSONItem.readBoolean(aCode: string): string;
+var
+  sample: string;
 begin
+  sample := Copy(aCode, 1, 4);
+  if LowerCase(sample) = 'true' then begin
+    Self.setType(dtValue); 
+    Self.fValue := 'true';
+    Self.fValType := vtBoolean;
+    result := copy(aCode, 5, Length(aCode));
+    exit;
+  end;
 
+  
+  sample := Copy(aCode, 1, 5);
+  if LowerCase(sample) = 'false' then begin
+    Self.setType(dtValue);
+    Self.fValue := 'false';
+    Self.fValType := vtBoolean;
+    result := copy(aCode, 6, Length(aCode));
+    exit;
+  end;
+end;
+
+function myJSONItem.readNull(aCode: string): string;
+var
+  sample: string;
+begin
+  sample := Copy(aCode, 1, 4);
+  if LowerCase(sample) = 'null' then begin
+    Self.setType(dtValue);
+    Self.fValue := 'null';
+    Self.fValType := vtNull;
+    result := copy(aCode, 5, Length(aCode));
+    exit;
+  end;
 end;
 
 function myJSONItem.readNumber(aCode: string): string;
@@ -610,6 +662,7 @@ begin
 
   // значения могут иметь только dtValue, массивы и объекты будут редуцированы
   setType(dtValue);
+  Self.fValType := vtBoolean;
   //fValType := vtBoolean;
   if value
     then fValue := 'true'
@@ -630,6 +683,17 @@ begin
   setType(dtValue);
   fValType := vtNumber;
   fValue := IntToStr(value);
+end;
+
+procedure myJSONItem.setNull;
+begin
+  if self = nil
+    then Exit;
+
+  // значения могут иметь только dtValue, массивы и объекты будут редуцированы
+  setType(dtValue);
+  fValType := vtNull;
+  fValue := 'null';
 end;
 
 procedure myJSONItem.setNum(value: double);
