@@ -88,7 +88,7 @@ config.Free;
 a := myJSONItem.Create;
 b := myJSONItem.Create;
 
-a.Code := '{item1:"value 1",item2:[3,4,5]}';
+a.Code := '{"item1":"value 1","item2":[3,4,5]}';
 a['item3'].setStr('value 3');
 Writeln(a.Code); // {"item1":"value 1","item2":[3,4,5],"item3":"value 3"}
 b['desc'].setStr('And now for something completelly different');
