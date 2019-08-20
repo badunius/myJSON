@@ -83,6 +83,7 @@ type
     function getStr(default: string = ''): string;
     function getBool(default: boolean = false): boolean;
     function getType(default: myJDType = dtUnset): myJDType;
+    function getJSON: string;
 
     // NULL-handling
     procedure setNull;
@@ -325,6 +326,45 @@ begin
 
   // возврращаем результат
   result := fChild[n];
+end;
+
+function myJSONItem.getJSON: string;
+var
+  i: integer;
+begin
+  // FIXME: this is the same code as in getCode (except we don't add "key":), gotta do something about this
+  result := '""';
+  if self = nil
+    then Exit;
+
+  case self.fType of
+    dtObject: begin
+      result := '{';
+      // adding childrens code
+      for i := 0 to high(fChild) do begin
+        result := result + fChild[i].Code;
+        if i < high(fChild)
+          then result := result + ',';
+      end;
+      result := result + '}';
+    end;  
+    dtArray: begin
+      result := '[';
+      // children's code
+      for i := 0 to high(fChild) do begin
+        result := result + fChild[i].Code;
+        if i < high(fChild)
+          then result := result + ',';
+      end;
+      result := result + ']';
+    end;
+    dtValue: begin
+      // only text values should be enquoted
+      if fValType <> vtText
+        then result := fValue
+        else result := '"' + fValue + '"';
+    end;
+  end;
 end;
 
 function myJSONItem.getKey(index: integer): string;

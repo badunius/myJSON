@@ -43,6 +43,16 @@ All values are stored as strings, therefore there are number of getters to do al
 - getNum / setNum `// double (float)`
 - getBool / setBool `// boolean. True: 'true' or any number > 0. False: 'false' (or any other string, actually) or any number <= 0.`
 
+There are also methods for working with null-values
+
+- `isNull: boolean` - returns `true` if value is explicitly set to `null`
+- `setNull` - explicitly sets value to `null`
+
+As it turned out assigning `Code` to `Code` works well for root elements, or when you assign root element's code to some child element.
+However, when you try to clone childs this way `Code` gettter wil return it with the leading `"key":` and when receiver parse it, it see `"key"` and treat it as if it was a text value. Therefore I added (there was other options though) a method for reading value as an encoded JSON string
+
+- `getJSON: string` - returns value as an encoded JSON string (without adding key to it even if there is one)
+
 ## Example 1: Reading values
 conf.json
 ```json
