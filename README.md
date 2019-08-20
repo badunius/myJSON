@@ -49,7 +49,7 @@ There are also methods for working with null-values
 - `setNull` - explicitly sets value to `null`
 
 As it turned out assigning `Code` to `Code` works well for root elements, or when you assign root element's code to some child element.
-However, when you try to clone childs this way `Code` gettter wil return it with the leading `"key":` and when receiver parse it, it see `"key"` and treat it as if it was a text value. Therefore I added (there was other options though) a method for reading value as an encoded JSON string
+However, when you try to clone childs this way, `Code` gettter will return it with the leading `"key":`, and when the receiver will parse it, it'll see `"key"` and treat it as if it was a text value. Therefore I added (there was other options though) a method for reading value as an encoded JSON string
 
 - `getJSON: string` - returns value as an encoded JSON string (without adding key to it even if there is one)
 
