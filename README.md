@@ -2,41 +2,41 @@
 JSON parser for delphi 7 and earlier (and maybe even later)
 
 ## Types:
-- ```myJSONItem``` -
+- `myJSONItem` -
 JSON node
-- ```myJDType``` -
+- `myJDType` -
 type of node (Object/Array/Value)
-- ```myJVType``` -
+- `myJVType` -
 value's subtype (Text/Number/Boolean)
 
 ## myJSONItem
 ### properties
-- ```Name: string``` - 
+- `Name: string` - 
   Node name (read only)
-- ```Item[name]: myJSONItem``` - 
+- `Item[name]: myJSONItem` - 
   Sub-item with specified name (read only, default property).
   Creates an item if it doesn't exist yet.
-- ```Code: string``` -
+- `Code: string` -
 Encoded JSON of this node and all of it's child nodes.
 Assign encoded JSON to this property to parse it.
-- ```Key[index]: string``` -
-Names of this node's childs (won't work for arrays)
-- ```Value[index]: myJSONItem``` -
-Values of this node's childs
-- ```Has[name]: boolean``` - 
-return true if node has a child with specified name
+- `Key[index]: string` -
+Names of this node's children (won't work for arrays)
+- `Value[index]: myJSONItem` -
+Values of this node's child
+- `Has[name]: boolean` - 
+returns `true` if node has a child with specified name
 
 ### methods
-- ```Count: integer``` -
+- `Count: integer` -
 Returns count of child nodes (works for both arrays and objects)
-- ```Remove(n)``` -
-Removes N-th children
-- ```LoadFromFile / SaveToFile``` - 
+- `Remove(n)` -
+Removes N-th child
+- `LoadFromFile / SaveToFile` - 
 Obviously
 
 ### getters and setters:
 
-All values are stored as strings, therefore there are number of getters to do all conversion for you. Each of this getters lets you to specify default values. Each setter wil convert values to string format.
+All values are stored as strings, therefore there are number of getters to do all conversion for you. Each of this getters lets you to specify default values. Each setter will convert values to string.
 
 - getStr / setStr `// string`
 - getInt / setInt `// integer`
@@ -49,7 +49,7 @@ There are also methods for working with null-values
 - `setNull` - explicitly sets value to `null`
 
 As it turned out assigning `Code` to `Code` works well for root elements, or when you assign root element's code to some child element.
-However, when you try to clone childs this way, `Code` gettter will return it with the leading `"key":`, and when the receiver will parse it, it'll see `"key"` and treat it as if it was a text value. Therefore I added (there was other options though) a method for reading value as an encoded JSON string
+However, when you try to clone children this way, `Code` getter will return it with the leading `"key":`, and when the receiver will parse it, it'll see `"key"` and treat it as if it was a text value. Therefore I added (there were other options though) a method for reading value as an encoded JSON string
 
 - `getJSON: string` - returns value as an encoded JSON string (without adding key to it even if there is one)
 
