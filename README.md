@@ -33,6 +33,10 @@ Returns count of child nodes (works for both arrays and objects)
 Removes N-th child
 - `LoadFromFile / SaveToFile` - 
 Obviously
+- `Clear` -
+Removes all child nodes, won't work on leaf nodes
+- `setArray(newLength: integer)` - 
+Explicitly sets type to dtArray and allocates the memory
 
 ### getters and setters:
 
