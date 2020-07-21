@@ -1,4 +1,4 @@
-﻿unit uJSON;
+unit uJSON;
 
 interface
 
@@ -61,12 +61,14 @@ type
     constructor Create;
     destructor Destroy; override;
 
+    // Clear
+    procedure Clear;
     // Child nodes count
     function Count: integer;
     // Remove n-th node
     procedure Remove(n: integer);
     // Load/Save own code
-    procedure LoadFromFile(filename: string);
+    procedure LoadFromFile(filename: string; utf: boolean = true);
     procedure SaveToFile(filename: string);
 
     // terminal node's (leafs) methods
@@ -88,6 +90,9 @@ type
     // NULL-handling
     procedure setNull;
     function isNull: boolean;
+
+    // Array helper
+    procedure setArray(newLength: integer);
   end;
 
 implementation
@@ -116,6 +121,11 @@ begin
 end;
 
 { myJSONItem }
+
+procedure myJSONItem.Clear;
+begin
+  clear_child;
+end;
 
 procedure myJSONItem.clear_child;
 var
@@ -233,7 +243,7 @@ var
 begin
   // Item type is not changed, unlike getItem
   result := nil;
-  // проверка на соответствие типу
+  // type compatibility check
   if (fType <> dtObject) and (fType <> dtArray)
     then Exit;
   // range check
@@ -452,20 +462,26 @@ begin
   result := fValType = vtNull;
 end;
 
-procedure myJSONItem.LoadFromFile(filename: string);
+procedure myJSONItem.LoadFromFile(filename: string; utf: boolean);
 var
   f: Text;
   s, b: string;
 begin
   clear_child;
   AssignFile(f, filename);
+  {$I-}
   Reset(f);
+  if IOResult <> 0
+    then raise Exception.CreateFmt('JSON: Failed to load %s', [filename]);
+  {$I+}
   while not EOF(f) do begin
     Readln(f, b);
     b := Trim(b);
     s := s + b;
   end;
-  Code := s;
+  if utf
+    then Code := utf8decode(s)
+    else Code := s;
   CloseFile(f);
 end;
 
@@ -492,6 +508,7 @@ begin
     // Shit =/
     else begin
       // Shouldda raise an exception here
+      raise Exception.CreateFmt('JSON parsing error "%s" is a bullshit', [aCode]);
       result := aCode;
     end;
   end;
@@ -687,12 +704,24 @@ end;
 
 procedure myJSONItem.SaveToFile(filename: string);
 var
-  f: Text;
+  f: TextFile;
 begin
   AssignFile(f, filename);
   Rewrite(f);
   Write(f, Code);
+  if IOResult <> 0
+    then raise Exception.CreateFmt('JSON: Failed to save %s', [filename]);
   CloseFile(f);
+end;
+
+procedure myJSONItem.setArray(newLength: integer);
+begin
+  // using existing methods
+  self.setType(dtArray);
+  // arrays are zero based
+  // trying to get the last element
+  // this will resize array and initialize its elements
+  self.getElem(newLength - 1);
 end;
 
 procedure myJSONItem.setBool(value: boolean);
@@ -711,6 +740,7 @@ end;
 
 procedure myJSONItem.setCode(aCode: string);
 begin
+  clear_child;
   Self.parse(aCode); // =/
 end;
 
@@ -745,6 +775,7 @@ begin
   setType(dtValue);
   fValType := vtNumber;
   fValue := FloatToStr(value);
+  fValue := StringReplace(fValue, ',', '.', [rfReplaceAll]);
 end;
 
 procedure myJSONItem.setStr(value: string);
