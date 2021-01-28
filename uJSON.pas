@@ -318,10 +318,9 @@ begin
     then setType(dtObject);
 
   // ищем элемент
-  key := LowerCase(key);
   n := -1;
   for i := 0 to high(fChild) do
-    if LowerCase(fChild[i].fKey) = key then begin
+    if LowerCase(fChild[i].fKey) = LowerCase(key) then begin
       n := i;
       Break;
     end;
