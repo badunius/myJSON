@@ -92,7 +92,8 @@ type
     function isNull: boolean;
 
     // Array helper
-    procedure setArray(newLength: integer);
+    procedure setArray(newLength: integer);overload;
+    procedure setArray(const arrayValues: array of myJSONItem);overload;
   end;
 
 implementation
@@ -491,6 +492,10 @@ var
 begin
   // 1. чистим WS
   aCode := wsTrim(aCode);
+  //Respecting the array format for the parser
+  if (fType = dtArray) and (aCode[1] <> '[') then
+  	aCode := '['+aCode+']';
+  
   // теперь в первом символе наша открывающая скобка
   case aCode[1] of
     // generic value (text)
@@ -722,6 +727,23 @@ begin
   // trying to get the last element
   // this will resize array and initialize its elements
   self.getElem(newLength - 1);
+end;
+
+procedure myJSONItem.setArray(const arrayValues: array of myJSONItem);
+var
+	i : integer;
+  item : myJSONItem;
+begin
+  //Cleaning the children to include the informed collection
+  SetLength(fChild, 0);
+  //Reading the reported items
+	for i := Low(arrayValues) to High(arrayValues) do
+  begin
+     //Adding items to the element tree
+     item := arrayValues[i];
+  	 SetLength(fChild, Length(fChild)+1);
+     fChild[Length(fChild)-1] := item;
+  end;
 end;
 
 procedure myJSONItem.setBool(value: boolean);
