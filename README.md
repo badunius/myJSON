@@ -1,6 +1,8 @@
 # myJSON
 JSON parser for delphi 7 and earlier (and maybe even later)
 
+Due to my pathalogic lazyness I strongly recommend you to use https://github.com/hydrobyte/McJSON instead. As of right now my main focus is Godot and TypeScript, therefore, I'm afraid this repo maintainance is at low priority. Feel free to fork this repo if you feel like it, it's under MIT license after all. Be good, do good.
+
 ## Types:
 - `myJSONItem` -
 JSON node
